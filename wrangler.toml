@@ -13,4 +13,4 @@ database_name = "farasdanga-db"
 database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
 
 [vars]
-SITE_URL = "https://hello.farasdanga.workers.dev"
+SITE_URL = "https://hello.farashdanga.workers.dev/"
