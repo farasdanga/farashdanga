@@ -127,6 +127,7 @@
         .stat .lbl{ font-size:.85rem; color:#DCE7F0; font-weight:500; }
 
         section{ padding:76px 0; }
+        section[id]{ scroll-margin-top:84px; }
         .section-head{ text-align:center; max-width:620px; margin:0 auto 48px; }
         .eyebrow-plain{ color:var(--terracotta); font-weight:600; font-size:.95rem; margin-bottom:8px; }
         .section-head h2{ font-size:clamp(1.7rem,3.2vw,2.5rem); color:var(--navy); font-weight:600; margin:0 0 12px; }
@@ -496,7 +497,7 @@
             </div>
         </section>
 
-        <section>
+        <section id="professionals">
             <div class="container">
                 <div class="toolbar">
                     <div>
@@ -510,6 +511,10 @@
                 </div>
                 <div id="providers-container" class="provider-grid"></div>
                 <p id="providers-empty" class="empty-note" style="display:none;"><span data-i18n="dirEmpty">No one's listed here yet. Try another search, or</span> <button onclick="clearFilter()" data-i18n="dirEmptyClear">clear the filter</button>.</p>
+                <div id="providers-more-wrap" style="display:none; text-align:center; margin-top:28px;">
+                    <p id="providers-count-label" style="font-size:.85rem; color:var(--ink-soft); margin:0 0 12px;"></p>
+                    <button class="btn btn-outline" onclick="showMoreProviders()" id="providers-more-btn" data-i18n="showMore">Show more</button>
+                </div>
                 <div class="suggest-line">
                     <button onclick="openSuggestModal()" data-i18n="suggestLine">Know someone reliable who isn't listed yet? Suggest them — it's free →</button>
                 </div>
@@ -538,6 +543,10 @@
                 </div>
                 <div id="ads-container" class="cat-grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));"></div>
                 <p id="ads-empty" class="empty-note" style="display:none;"><span data-i18n="adsEmpty">No promotions live right now.</span> <button onclick="openAdModal()" data-i18n="adsEmptyCta">Be the first to post one</button>.</p>
+                <div id="ads-more-wrap" style="display:none; text-align:center; margin-top:24px;">
+                    <p id="ads-count-label" style="font-size:.85rem; color:var(--ink-soft); margin:0 0 12px;"></p>
+                    <button class="btn btn-outline" onclick="showMoreDirectoryAds()" data-i18n="showMore">Show more</button>
+                </div>
             </div>
         </section>
 
@@ -757,13 +766,15 @@
 
     function filterByCategory(name) {
         activeFilter = name;
+        providerPageLimit = PROVIDER_PAGE_SIZE;
         loadCategories(); loadProviders();
         document.getElementById('filter-label').classList.add('show');
         document.getElementById('filter-label-text').textContent = name;
-        scrollToId('services');
+        scrollToId('professionals');
     }
     function clearFilter() {
         activeFilter = null;
+        providerPageLimit = PROVIDER_PAGE_SIZE;
         document.getElementById('search-input').value = '';
         loadCategories(); loadProviders();
         document.getElementById('filter-label').classList.remove('show');
@@ -772,11 +783,16 @@
         const term = document.getElementById('search-input').value.trim();
         if (!term) { clearFilter(); return; }
         activeFilter = 'search:' + term.toLowerCase();
+        providerPageLimit = PROVIDER_PAGE_SIZE;
         document.getElementById('filter-label').classList.add('show');
         document.getElementById('filter-label-text').textContent = `"${term}"`;
         loadCategories(); loadProviders();
-        scrollToId('services');
+        scrollToId('professionals');
     }
+
+    const PROVIDER_PAGE_SIZE = 9;
+    let providerPageLimit = PROVIDER_PAGE_SIZE;
+    let providerFullList = [];
 
     async function loadProviders() {
         const { providers } = await api('/providers');
@@ -788,11 +804,18 @@
                 list = list.filter(p => p.name.toLowerCase().includes(term) || p.service.toLowerCase().includes(term));
             } else list = list.filter(p => p.service === activeFilter);
         }
+        providerFullList = list;
+        renderProviderPage();
+    }
+    function renderProviderPage() {
+        const list = providerFullList;
         const container = document.getElementById('providers-container');
         const empty = document.getElementById('providers-empty');
-        if (!list.length) { container.innerHTML = ''; empty.style.display = 'block'; return; }
+        const moreWrap = document.getElementById('providers-more-wrap');
+        if (!list.length) { container.innerHTML = ''; empty.style.display = 'block'; moreWrap.style.display = 'none'; return; }
         empty.style.display = 'none';
-        container.innerHTML = list.map(p => `
+        const shown = list.slice(0, providerPageLimit);
+        container.innerHTML = shown.map(p => `
             <div class="provider-card">
                 <div class="provider-top">
                     <div class="provider-head">
@@ -807,6 +830,16 @@
                     ${p.whatsapp ? `<a href="${waHref(p.whatsapp)}" target="_blank" class="wa-btn">WhatsApp</a>` : ''}
                 </div>
             </div>`).join('');
+        if (list.length > shown.length) {
+            moreWrap.style.display = 'block';
+            document.getElementById('providers-count-label').textContent = `Showing ${shown.length} of ${list.length}`;
+        } else {
+            moreWrap.style.display = 'none';
+        }
+    }
+    function showMoreProviders() {
+        providerPageLimit += PROVIDER_PAGE_SIZE;
+        renderProviderPage();
     }
 
     let bannerAdsList = [];
@@ -824,12 +857,33 @@
         maybeShowPopupAd(popups);
     }
 
+    const AD_PAGE_SIZE = 6;
+    let adPageLimit = AD_PAGE_SIZE;
+    let directoryAdsFullList = [];
+
     function renderDirectoryAds(ads) {
+        directoryAdsFullList = ads;
+        renderDirectoryAdsPage();
+    }
+    function renderDirectoryAdsPage() {
+        const ads = directoryAdsFullList;
         const container = document.getElementById('ads-container');
         const empty = document.getElementById('ads-empty');
-        if (!ads.length) { container.innerHTML = ''; empty.style.display = 'block'; return; }
+        const moreWrap = document.getElementById('ads-more-wrap');
+        if (!ads.length) { container.innerHTML = ''; empty.style.display = 'block'; moreWrap.style.display = 'none'; return; }
         empty.style.display = 'none';
-        container.innerHTML = ads.map(a => adCardHtml(a)).join('');
+        const shown = ads.slice(0, adPageLimit);
+        container.innerHTML = shown.map(a => adCardHtml(a)).join('');
+        if (ads.length > shown.length) {
+            moreWrap.style.display = 'block';
+            document.getElementById('ads-count-label').textContent = `Showing ${shown.length} of ${ads.length}`;
+        } else {
+            moreWrap.style.display = 'none';
+        }
+    }
+    function showMoreDirectoryAds() {
+        adPageLimit += AD_PAGE_SIZE;
+        renderDirectoryAdsPage();
     }
 
     function adCardHtml(a) {
@@ -1527,7 +1581,8 @@
             adWebsite: 'Website / profile link (optional)', adBanner: 'Banner image (optional)',
             adRemoveImg: 'Remove image', adBannerHint: 'Shown at the top of your ad card. Compressed automatically — no need to resize yourself.',
             adReviewNote: "After payment, your ad — including this image — is reviewed by our team before it goes live. If it's declined, your payment is automatically refunded.",
-            adSubmit: 'Pay & submit ad'
+            adSubmit: 'Pay & submit ad',
+            showMore: 'Show more'
         },
         bn: {
             brand: 'হ্যালো ফরাসডাঙ্গা',
@@ -1569,7 +1624,8 @@
             adWebsite: 'ওয়েবসাইট / প্রোফাইল লিংক (ঐচ্ছিক)', adBanner: 'ব্যানার ছবি (ঐচ্ছিক)',
             adRemoveImg: 'ছবি সরান', adBannerHint: 'আপনার বিজ্ঞাপন কার্ডের উপরে দেখানো হবে। স্বয়ংক্রিয়ভাবে কম্প্রেস হয় — নিজে রিসাইজ করার দরকার নেই।',
             adReviewNote: 'পেমেন্টের পর, এই ছবিসহ আপনার বিজ্ঞাপনটি লাইভ হওয়ার আগে আমাদের টিম যাচাই করে। বাতিল হলে, আপনার পেমেন্ট স্বয়ংক্রিয়ভাবে ফেরত দেওয়া হয়।',
-            adSubmit: 'পে করুন এবং বিজ্ঞাপন জমা দিন'
+            adSubmit: 'পে করুন এবং বিজ্ঞাপন জমা দিন',
+            showMore: 'আরও দেখুন'
         }
     };
     function getLang() { return localStorage.getItem('farasdanga_lang') || 'en'; }
