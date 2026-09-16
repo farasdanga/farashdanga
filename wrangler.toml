@@ -1,6 +1,6 @@
 name = "hello"
 main = "worker/index.js"
-compatibility_date = "2026-01-01"
+compatibility_date = "2026-09-16"
 
 # Serves the /public folder as your static site.
 # Requests to /api/* are handled by worker/index.js instead.
