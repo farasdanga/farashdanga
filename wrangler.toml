@@ -2,15 +2,26 @@ name = "hello"
 main = "worker/index.js"
 compatibility_date = "2026-09-16"
 
+# Serves the /public folder as your static site.
+# Requests to /api/* are handled by worker/index.js instead — run_worker_first
+# forces Cloudflare to always run the Worker for these paths BEFORE it checks
+# for a matching static file, so /api/* is never swallowed by the
+# single-page-application fallback and handed back index.html instead.
 [assets]
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "farasdanga-db"
 database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
 
+# Secrets (set with `wrangler secret put NAME` — never write these in this file):
+#   ADMIN_PASSWORD          your admin login password
+#   RAZORPAY_KEY_ID         from Razorpay dashboard (only needed for the paid ad feature)
+#   RAZORPAY_KEY_SECRET     from Razorpay dashboard
+
 [vars]
-SITE_URL = "https://hello.farashdanga.workers.dev/"
+SITE_URL = "https://hello.farashdanga.workers.dev"
