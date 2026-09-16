@@ -2,8 +2,6 @@ name = "hello"
 main = "worker/index.js"
 compatibility_date = "2026-09-16"
 
-# Serves the /public folder as your static site.
-# Requests to /api/* are handled by worker/index.js instead.
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -13,11 +11,6 @@ not_found_handling = "single-page-application"
 binding = "DB"
 database_name = "farasdanga-db"
 database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
-
-# Secrets should be configured in Cloudflare, not committed here.
-# ADMIN_PASSWORD
-# RAZORPAY_KEY_ID
-# RAZORPAY_KEY_SECRET
 
 [vars]
 SITE_URL = "https://hello.farasdanga.workers.dev"
