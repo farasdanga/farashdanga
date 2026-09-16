@@ -9,17 +9,15 @@ directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 
-# You already created this — just make sure the database_id below matches
-# what `wrangler d1 list` shows for farasdanga-db.
 [[d1_databases]]
 binding = "DB"
 database_name = "farasdanga-db"
 database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
 
-# Secrets (set with `wrangler secret put NAME` — never write these in this file):
-#   ADMIN_PASSWORD          your admin login password
-#   RAZORPAY_KEY_ID         from Razorpay dashboard (only needed for the paid ad feature)
-#   RAZORPAY_KEY_SECRET     from Razorpay dashboard
+# Secrets should be configured in Cloudflare, not committed here.
+# ADMIN_PASSWORD
+# RAZORPAY_KEY_ID
+# RAZORPAY_KEY_SECRET
 
 [vars]
 SITE_URL = "https://hello.farasdanga.workers.dev"
