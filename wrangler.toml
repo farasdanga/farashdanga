@@ -1,4 +1,4 @@
-name = "hello"
+name = "farasdanga-serve"
 main = "worker/index.js"
 compatibility_date = "2026-01-01"
 
@@ -14,7 +14,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "farasdanga-db"
-database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
 # Secrets (set with `wrangler secret put NAME` — never write these in this file):
 #   ADMIN_PASSWORD          your admin login password
@@ -22,4 +22,4 @@ database_id = "64bf5903-2047-4a62-afa7-eb261897c18c"
 #   RAZORPAY_KEY_SECRET     from Razorpay dashboard
 
 [vars]
-SITE_URL = "https://hello.farashdanga.workers.dev"
+SITE_URL = "https://hello.farasdanga.workers.dev"
