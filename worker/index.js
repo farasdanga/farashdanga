@@ -34,6 +34,8 @@ async function router(request, env, url) {
   // ---- Public: paid ad flow ----
   if (pathname === '/api/ads/create-order' && method === 'POST') return createAdOrder(request, env);
   if (pathname === '/api/ads/verify-payment' && method === 'POST') return verifyAdPayment(request, env);
+  if (pathname.match(/^\/api\/ads\/\d+\/impression$/) && method === 'POST') return recordAdEvent(env, idFromPath(pathname), 'impressions');
+  if (pathname.match(/^\/api\/ads\/\d+\/click$/) && method === 'POST') return recordAdEvent(env, idFromPath(pathname), 'clicks');
 
   // ---- Admin ----
   if (pathname === '/api/admin/login' && method === 'POST') return adminLogin(request, env);
@@ -160,12 +162,18 @@ async function listAds(env) {
   // formatting/timezone ambiguity that caused approved ads to vanish before.
   const nowMs = Date.now();
   const { results } = await env.DB.prepare(
-    `SELECT id, business_name, description, icon, phone, email, website_url, whatsapp, image_data, placement
+    `SELECT id, business_name, description, icon, phone, email, website_url, whatsapp, image_data, placement, featured
      FROM ads
      WHERE status = 'approved' AND (expires_at IS NULL OR expires_at > ?)
-     ORDER BY id DESC`
+     ORDER BY featured DESC, id DESC`
   ).bind(nowMs).all();
   return json({ ads: results });
+}
+async function recordAdEvent(env, id, column) {
+  // column is never user input (only 'impressions' or 'clicks' from the two
+  // routes above), so it's safe to interpolate directly into the SQL here.
+  await env.DB.prepare(`UPDATE ads SET ${column} = COALESCE(${column}, 0) + 1 WHERE id = ?`).bind(id).run();
+  return json({ ok: true });
 }
 async function listAdPlans(env) {
   const { results } = await env.DB.prepare('SELECT * FROM ad_plans WHERE active = 1 ORDER BY placement, price_rupees').all();
@@ -358,7 +366,7 @@ async function adminUpdateAd(request, env, id) {
   }
 
   await env.DB.prepare(
-    `UPDATE ads SET business_name=?, description=?, icon=?, phone=?, email=?, website_url=?, whatsapp=?, image_data=? WHERE id=?`
+    `UPDATE ads SET business_name=?, description=?, icon=?, phone=?, email=?, website_url=?, whatsapp=?, image_data=?, featured=? WHERE id=?`
   ).bind(
     b.businessName ?? ad.business_name,
     b.description ?? ad.description,
@@ -368,6 +376,7 @@ async function adminUpdateAd(request, env, id) {
     website,
     b.whatsapp !== undefined ? (b.whatsapp || null) : ad.whatsapp,
     image,
+    b.featured !== undefined ? (b.featured ? 1 : 0) : ad.featured,
     id
   ).run();
 
