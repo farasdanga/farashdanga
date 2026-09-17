@@ -198,10 +198,12 @@
         .trust-card p{ font-size:.85rem; color:var(--ink-soft); margin:0; line-height:1.5; }
 
         .ad-card{ background:#fff; border:1.5px solid var(--marigold); border-radius:18px; padding:22px; position:relative; overflow:hidden; }
+        .ad-card.featured{ border-color:#D4A017; box-shadow:0 0 0 3px rgba(212,160,23,.15), 0 10px 26px rgba(212,160,23,.18); }
         .ad-ribbon{
             position:absolute; top:14px; right:-32px; background:var(--terracotta); color:#fff; font-size:.65rem;
             font-weight:800; letter-spacing:.06em; padding:5px 38px; transform:rotate(35deg); text-transform:uppercase;
         }
+        .ad-ribbon.featured-ribbon{ background:linear-gradient(120deg,#D4A017,#F3C94D); right:-38px; padding:5px 44px; }
         .ad-icon{ font-size:1.9rem; margin-bottom:10px; }
         .ad-card h3{ font-family:'Fraunces',serif; font-size:1.1rem; margin:0 0 6px; color:var(--navy); }
         .ad-card p{ font-size:.88rem; color:var(--ink-soft); margin:0 0 16px; line-height:1.5; }
@@ -212,6 +214,7 @@
             border:1.5px solid var(--marigold); border-radius:20px; padding:20px 26px; cursor:pointer;
             transition:transform .18s ease, box-shadow .18s ease;
         }
+        .banner-ad.featured{ border-color:#D4A017; background:linear-gradient(120deg,#FFF8E6,#FFFDF9); box-shadow:0 0 0 3px rgba(212,160,23,.15); }
         .banner-ad:hover{ transform:translateY(-3px); box-shadow:0 14px 30px rgba(11,42,74,.1); }
         .banner-ad img{ width:90px; height:90px; border-radius:14px; object-fit:cover; flex-shrink:0; }
         .banner-ad .banner-body{ flex:1; min-width:0; }
@@ -229,6 +232,7 @@
         }
         .popup-ad-overlay.active{ opacity:1; visibility:visible; }
         .popup-ad-card{ background:#fff; border-radius:20px; max-width:380px; width:100%; overflow:hidden; box-shadow:0 30px 70px rgba(0,0,0,.35); position:relative; }
+        .popup-ad-card.featured{ box-shadow:0 0 0 3px rgba(212,160,23,.4), 0 30px 70px rgba(0,0,0,.35); }
         .popup-ad-card img{ width:100%; height:160px; object-fit:cover; display:block; }
         .popup-ad-body{ padding:22px; }
         .popup-ad-close{ position:absolute; top:10px; right:10px; background:rgba(0,0,0,.5); color:#fff; border:none; width:30px; height:30px; border-radius:50%; font-size:1.1rem; cursor:pointer; z-index:2; }
@@ -844,7 +848,24 @@
 
         renderDirectoryAds(directoryAds);
         renderBannerAds(banner);
+        await loadPopupFrequency();
         maybeShowPopupAd(popups);
+    }
+
+    // ---------- ad analytics: impressions & clicks ----------
+    const impressionsTracked = new Set();
+    function trackAdEvent(id, kind) {
+        try { fetch(`${API}/ads/${id}/${kind}`, { method: 'POST', keepalive: true }).catch(() => {}); } catch (e) {}
+    }
+    function trackImpressionOnce(id) {
+        if (impressionsTracked.has(id)) return;
+        impressionsTracked.add(id);
+        trackAdEvent(id, 'impression');
+    }
+    function adClick(id, href, newTab) {
+        trackAdEvent(id, 'click');
+        if (newTab) window.open(href, '_blank');
+        else window.location.href = href;
     }
 
     const AD_PAGE_SIZE = 6;
@@ -864,6 +885,7 @@
         empty.style.display = 'none';
         const shown = ads.slice(0, adPageLimit);
         container.innerHTML = shown.map(a => adCardHtml(a)).join('');
+        shown.forEach(a => trackImpressionOnce(a.id));
         if (ads.length > shown.length) {
             moreWrap.style.display = 'block';
             document.getElementById('ads-count-label').textContent = `Showing ${shown.length} of ${ads.length}`;
@@ -882,18 +904,18 @@
         const primaryHref = a.website_url ? a.website_url : (waNumber ? waHref(waNumber) : telHref(a.phone));
         const primaryNewTab = !!a.website_url || !!waNumber;
         return `
-            <div class="ad-card" style="${a.image_data ? 'padding-top:0;' : ''} cursor:pointer;" onclick="openAdLink('${escapeAttr(primaryHref)}', ${primaryNewTab})">
-                <div class="ad-ribbon">AD</div>
+            <div class="ad-card ${a.featured ? 'featured' : ''}" style="${a.image_data ? 'padding-top:0;' : ''} cursor:pointer;" onclick="adClick(${a.id}, '${escapeAttr(primaryHref)}', ${primaryNewTab})">
+                <div class="ad-ribbon ${a.featured ? 'featured-ribbon' : ''}">${a.featured ? '★ FEATURED' : 'AD'}</div>
                 ${a.image_data ? `<img src="${a.image_data}" style="width:calc(100% + 44px); margin:0 -22px 14px; display:block; height:120px; object-fit:cover; border-radius:18px 18px 0 0;">` : ''}
                 <div style="${a.image_data ? 'padding:0 0 4px;' : ''}">
                     <div class="ad-icon">${a.icon || '📢'}</div>
                     <h3>${a.business_name}</h3>
                     <p>${a.description || ''}</p>
                     <div style="display:grid; grid-template-columns:${waNumber ? '1fr 1fr' : '1fr'}; gap:8px; margin-top:4px;" onclick="event.stopPropagation()">
-                        <a href="${telHref(a.phone)}" class="call-btn" style="text-decoration:none;">📞 Call</a>
-                        ${waNumber ? `<a href="${waHref(waNumber)}" target="_blank" class="wa-btn" style="text-decoration:none; text-align:center; padding:12px; border-radius:12px;">WhatsApp</a>` : ''}
+                        <a href="${telHref(a.phone)}" class="call-btn" style="text-decoration:none;" onclick="trackAdEvent(${a.id},'click')">📞 Call</a>
+                        ${waNumber ? `<a href="${waHref(waNumber)}" target="_blank" class="wa-btn" style="text-decoration:none; text-align:center; padding:12px; border-radius:12px;" onclick="trackAdEvent(${a.id},'click')">WhatsApp</a>` : ''}
                     </div>
-                    ${a.website_url ? `<a href="${a.website_url}" target="_blank" onclick="event.stopPropagation()" style="display:block; text-align:center; margin-top:8px; font-size:.82rem; font-weight:600; color:var(--river);">Visit ${a.website_url.replace(/^https?:\/\//,'').replace(/\/$/,'')} →</a>` : ''}
+                    ${a.website_url ? `<a href="${a.website_url}" target="_blank" onclick="event.stopPropagation(); trackAdEvent(${a.id},'click')" style="display:block; text-align:center; margin-top:8px; font-size:.82rem; font-weight:600; color:var(--river);">Visit ${a.website_url.replace(/^https?:\/\//,'').replace(/\/$/,'')} →</a>` : ''}
                 </div>
             </div>`;
     }
@@ -901,6 +923,7 @@
     // Homepage banner: shows one ad at a time. With more than one live banner
     // ad, it auto-rotates every 6 seconds with dots — so the homepage never
     // gets crowded no matter how many banner ads are approved at once.
+    // Featured banner ads are sorted first by the server, so they rotate in first.
     function renderBannerAds(ads) {
         bannerAdsList = ads;
         bannerRotateIndex = 0;
@@ -919,6 +942,7 @@
     function paintBannerAd() {
         const a = bannerAdsList[bannerRotateIndex];
         if (!a) return;
+        trackAdEvent(a.id, 'impression');
         const waNumber = a.whatsapp || a.phone;
         const primaryHref = a.website_url ? a.website_url : (waNumber ? waHref(waNumber) : telHref(a.phone));
         const primaryNewTab = !!a.website_url || !!waNumber;
@@ -926,10 +950,10 @@
             ? `<div class="banner-dots">${bannerAdsList.map((_, i) => `<span class="${i===bannerRotateIndex?'active':''}" onclick="event.stopPropagation(); jumpToBannerAd(${i})"></span>`).join('')}</div>`
             : '';
         document.getElementById('banner-ad-slot').innerHTML = `
-            <div class="banner-ad" onclick="openAdLink('${escapeAttr(primaryHref)}', ${primaryNewTab})">
+            <div class="banner-ad ${a.featured ? 'featured' : ''}" onclick="adClick(${a.id}, '${escapeAttr(primaryHref)}', ${primaryNewTab})">
                 ${a.image_data ? `<img src="${a.image_data}">` : `<div class="banner-ad-icon" style="font-size:2.4rem;">${a.icon || '📢'}</div>`}
                 <div class="banner-body">
-                    <div class="banner-tag">Sponsored</div>
+                    <div class="banner-tag">${a.featured ? '★ Featured' : 'Sponsored'}</div>
                     <h3>${a.business_name}</h3>
                     <p>${a.description || ''}</p>
                 </div>
@@ -948,43 +972,57 @@
         }
     }
 
-    // Popup ad: at most one shown per visitor per browsing session (never
-    // stacks multiple popups on a visitor), chosen at random if several are live.
+    // Popup ad: frequency is admin-configurable from Admin → Ads (default 24
+    // hours between popups for the same visitor; 0 means "once per browser
+    // session" instead). Chosen at random if several popup ads are live.
+    let POPUP_FREQUENCY_HOURS = 24;
+    async function loadPopupFrequency() {
+        try {
+            const { settings } = await api('/settings');
+            if (settings.popup_frequency_hours !== undefined) POPUP_FREQUENCY_HOURS = Number(settings.popup_frequency_hours);
+        } catch (e) { /* keep default of 24h if this fails — never blocks the rest of the page */ }
+    }
+    function popupDueToShow() {
+        if (POPUP_FREQUENCY_HOURS <= 0) return !sessionStorage.getItem('farasdanga_popup_shown');
+        const last = Number(localStorage.getItem('farasdanga_popup_last_shown') || 0);
+        return (Date.now() - last) / 3600000 >= POPUP_FREQUENCY_HOURS;
+    }
+    function markPopupShown() {
+        sessionStorage.setItem('farasdanga_popup_shown', '1');
+        localStorage.setItem('farasdanga_popup_last_shown', String(Date.now()));
+    }
     function maybeShowPopupAd(ads) {
         if (!ads.length) return;
-        if (sessionStorage.getItem('farasdanga_popup_shown')) return;
+        if (!popupDueToShow()) return;
         const a = ads[Math.floor(Math.random() * ads.length)];
         setTimeout(() => {
             const waNumber = a.whatsapp || a.phone;
             const primaryHref = a.website_url ? a.website_url : (waNumber ? waHref(waNumber) : telHref(a.phone));
             const primaryNewTab = !!a.website_url || !!waNumber;
             document.getElementById('popup-ad-overlay').innerHTML = `
-                <div class="popup-ad-card">
+                <div class="popup-ad-card ${a.featured ? 'featured' : ''}">
                     <button class="popup-ad-close" onclick="closePopupAd()">✕</button>
                     ${a.image_data ? `<img src="${a.image_data}">` : ''}
                     <div class="popup-ad-body">
-                        <div class="banner-tag" style="color:var(--terracotta); font-size:.68rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;">Sponsored</div>
+                        <div class="banner-tag" style="color:var(--terracotta); font-size:.68rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase;">${a.featured ? '★ Featured' : 'Sponsored'}</div>
                         <h3 style="font-family:'Fraunces',serif; margin:4px 0 8px; color:var(--navy);">${a.icon || '📢'} ${a.business_name}</h3>
                         <p style="color:var(--ink-soft); font-size:.9rem; margin:0 0 16px;">${a.description || ''}</p>
                         <div style="display:grid; grid-template-columns:${waNumber ? '1fr 1fr' : '1fr'}; gap:8px;">
-                            <a href="${telHref(a.phone)}" class="call-btn" style="text-decoration:none;">📞 Call</a>
-                            ${waNumber ? `<a href="${waHref(waNumber)}" target="_blank" class="wa-btn" style="text-decoration:none; text-align:center; padding:12px; border-radius:12px;">WhatsApp</a>` : ''}
+                            <a href="${telHref(a.phone)}" class="call-btn" style="text-decoration:none;" onclick="trackAdEvent(${a.id},'click')">📞 Call</a>
+                            ${waNumber ? `<a href="${waHref(waNumber)}" target="_blank" class="wa-btn" style="text-decoration:none; text-align:center; padding:12px; border-radius:12px;" onclick="trackAdEvent(${a.id},'click')">WhatsApp</a>` : ''}
                         </div>
-                        ${a.website_url ? `<a href="${a.website_url}" target="_blank" style="display:block; text-align:center; margin-top:10px; font-size:.82rem; font-weight:600; color:var(--river);">Visit their page →</a>` : ''}
+                        ${a.website_url ? `<a href="${a.website_url}" target="_blank" onclick="trackAdEvent(${a.id},'click')" style="display:block; text-align:center; margin-top:10px; font-size:.82rem; font-weight:600; color:var(--river);">Visit their page →</a>` : ''}
                     </div>
                 </div>`;
             document.getElementById('popup-ad-overlay').classList.add('active');
-            sessionStorage.setItem('farasdanga_popup_shown', '1');
+            trackAdEvent(a.id, 'impression');
+            markPopupShown();
         }, 3000);
     }
     function closePopupAd() {
         document.getElementById('popup-ad-overlay').classList.remove('active');
     }
     function escapeAttr(str) { return (str || '').replace(/'/g, "&#39;"); }
-    function openAdLink(href, newTab) {
-        if (newTab) window.open(href, '_blank');
-        else window.location.href = href;
-    }
 
     function openSuggestModal() {
         document.getElementById('suggest-form').reset();
@@ -1195,6 +1233,7 @@
         } else if (tab === 'ads') {
             const { ads } = await api('/admin/ads');
             c.innerHTML = renderAdminAds(ads);
+            loadPopupFrequencyIntoAdmin();
         } else if (tab === 'adplans') {
             const { plans } = await api('/admin/ad-plans');
             c.innerHTML = renderAdminAdPlans(plans);
@@ -1300,13 +1339,23 @@
         const badge = { pending_payment: 'pill-grey', pending_review: 'pill-amber', approved: 'pill-green', rejected: 'pill-red', expired: 'pill-grey' };
         const refundBadge = { refunded: 'pill-green', failed: 'pill-red', pending: 'pill-amber' };
         const placementLabel = { directory: 'Directory listing', banner: 'Homepage banner', popup: 'Popup' };
-        const rows = ads.map(a => `
-            <div class="admin-panel-card" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px;">
+        const rows = ads.map(a => {
+            const impressions = a.impressions || 0;
+            const clicks = a.clicks || 0;
+            const ctr = impressions ? ((clicks / impressions) * 100).toFixed(1) + '%' : '—';
+            let expiryNote = '';
+            if (a.status === 'approved' && a.expires_at) {
+                const daysLeft = Math.ceil((a.expires_at - Date.now()) / 86400000);
+                expiryNote = daysLeft > 0 ? ` · expires in ${daysLeft}d` : ' · expired';
+            }
+            return `
+            <div class="admin-panel-card" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; ${a.featured ? 'border-color:#D4A017;' : ''}">
                 <div style="display:flex; gap:12px; align-items:flex-start; cursor:pointer;" onclick="openAdDetail(${a.id})">
                     ${a.image_data ? `<img src="${a.image_data}" style="width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--line); flex-shrink:0;">` : ''}
                     <div>
-                        <p style="font-weight:700; margin:0 0 4px; color:var(--navy);">${a.icon || '📢'} ${a.business_name} <span style="font-weight:500; color:var(--ink-soft); font-size:.78rem;">· ${placementLabel[a.placement] || a.placement || 'directory'}</span></p>
+                        <p style="font-weight:700; margin:0 0 4px; color:var(--navy);">${a.featured ? '⭐ ' : ''}${a.icon || '📢'} ${a.business_name} <span style="font-weight:500; color:var(--ink-soft); font-size:.78rem;">· ${placementLabel[a.placement] || a.placement || 'directory'}${expiryNote}</span></p>
                         <p style="font-size:.85rem; color:var(--ink-soft); margin:0;">${a.phone} · ₹${(a.amount/100).toFixed(0)} · ${a.plan_name || ''} · ${new Date(a.created_at).toLocaleDateString()}</p>
+                        <p style="font-size:.8rem; color:var(--river); margin:4px 0 0; font-weight:600;">👁 ${impressions} views · 👆 ${clicks} clicks · CTR ${ctr}</p>
                         <p style="font-size:.85rem; color:var(--ink-soft); margin:4px 0 0;">${(a.description || '').slice(0, 90)}${(a.description||'').length > 90 ? '…' : ''}</p>
                     </div>
                 </div>
@@ -1317,11 +1366,32 @@
                     ${a.status === 'pending_review' ? `<button class="link-btn green" onclick="approveAd(${a.id})">Approve</button><button class="link-btn red" onclick="rejectAd(${a.id})">Reject &amp; refund</button>` : ''}
                     <button class="link-btn red" onclick="deleteAd(${a.id})">Delete</button>
                 </div>
-            </div>`).join('');
+            </div>`;
+        }).join('');
         return `
-            <h3 style="font-family:'Fraunces',serif; margin:0 0 16px; color:var(--navy);">Business ads</h3>
+            <div class="admin-section-head"><h3>Business ads</h3></div>
+            <div class="admin-panel-card" style="margin-bottom:20px; max-width:480px;">
+                <p style="font-weight:700; color:var(--navy); margin:0 0 4px;">Popup frequency</p>
+                <p style="font-size:.82rem; color:var(--ink-soft); margin:0 0 12px;">How often the same visitor can be shown a popup ad again.</p>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input id="popup-frequency-input" type="number" min="0" placeholder="24" style="width:90px; padding:9px 10px; border:1px solid var(--line); border-radius:10px;">
+                    <span style="font-size:.85rem; color:var(--ink-soft);">hours (0 = once per browser session)</span>
+                </div>
+                <button class="btn btn-primary" style="margin-top:12px; padding:9px 18px; font-size:.85rem;" onclick="savePopupFrequencySetting()">Save</button>
+            </div>
             <div id="ad-detail-area"></div>
             ${rows || '<p style="color:var(--ink-soft);">No ads yet.</p>'}`;
+    }
+    async function loadPopupFrequencyIntoAdmin() {
+        try {
+            const { settings } = await api('/settings');
+            document.getElementById('popup-frequency-input').value = settings.popup_frequency_hours ?? 24;
+        } catch (e) {}
+    }
+    async function savePopupFrequencySetting() {
+        const val = document.getElementById('popup-frequency-input').value;
+        await api('/admin/settings', { method: 'POST', body: JSON.stringify({ popup_frequency_hours: val }) });
+        toast('Popup frequency updated.');
     }
     async function approveAd(id) { await api(`/admin/ads/${id}/approve`, { method: 'POST' }); switchAdminTab('ads'); loadAds(); toast('Ad approved — now live.'); }
     async function rejectAd(id) {
@@ -1355,6 +1425,13 @@
                     <div id="ad-detail-img-wrap">${a.image_data ? `<img id="ad-detail-img" src="${a.image_data}" style="width:100%; max-height:160px; object-fit:cover; border-radius:10px; border:1px solid var(--line); margin-bottom:6px;">` : '<p style="font-size:.82rem; color:var(--ink-soft);">No image on this ad.</p>'}</div>
                     <input type="file" accept="image/*" onchange="handleAdDetailImageSelect(event)">
                     ${a.image_data ? `<button type="button" onclick="removeAdDetailImage()" style="margin-top:6px; background:none; border:none; color:var(--terracotta); font-size:.8rem; font-weight:600;">Remove image</button>` : ''}
+                </div>
+                <div style="background:var(--sky); border-radius:12px; padding:12px 14px; margin-bottom:16px; font-size:.85rem; color:var(--navy); font-weight:600;">
+                    👁 ${a.impressions || 0} views · 👆 ${a.clicks || 0} clicks · CTR ${a.impressions ? (((a.clicks||0)/a.impressions)*100).toFixed(1) + '%' : '—'}
+                </div>
+                <div class="field" style="display:flex; align-items:center; gap:10px; background:#FFF8E6; border:1px solid #F0DFA6; border-radius:12px; padding:12px 14px;">
+                    <input type="checkbox" id="adf-featured" ${a.featured ? 'checked' : ''} style="width:18px; height:18px;">
+                    <label for="adf-featured" style="margin:0; cursor:pointer;">⭐ Mark as Featured — pins this ad first in its placement with a gold highlight</label>
                 </div>
                 <div class="field"><label>Business name</label><input id="adf-name" value="${escapeAttr(a.business_name)}"></div>
                 <div class="field"><label>Description</label><textarea id="adf-desc" rows="2">${a.description || ''}</textarea></div>
@@ -1404,7 +1481,8 @@
             phone: document.getElementById('adf-phone').value.trim(),
             email: document.getElementById('adf-email').value.trim(),
             whatsapp: document.getElementById('adf-whatsapp').value.trim(),
-            websiteUrl: document.getElementById('adf-website').value.trim()
+            websiteUrl: document.getElementById('adf-website').value.trim(),
+            featured: document.getElementById('adf-featured').checked
         };
         if (adDetailImageOverride !== undefined) body.imageData = adDetailImageOverride;
         await api(`/admin/ads/${id}`, { method: 'PUT', body: JSON.stringify(body) });
