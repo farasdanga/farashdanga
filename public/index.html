@@ -437,7 +437,6 @@
                 <span class="badge-free"><span class="dot-pulse"></span> <span data-i18n="heroBadge">Free to browse. Free to call. Always.</span></span>
                 <h1>Every trusted <em>hand&nbsp;in&nbsp;town,</em><br>one call away.</h1>
                 <p class="lead">A community directory built by and for Farasdanga — find a plumber, electrician, cleaner or carpenter nearby, and just ring them. No apps to install, no fees to anyone, no middleman in between.</p>
-
                 <div class="search-card">
                     <input id="search-input" type="text" placeholder="Try “electrician” or “Ramesh”…" data-i18n-placeholder="searchPlaceholder" onkeydown="if(event.key==='Enter'){doSearch(); return false;}">
                     <button onclick="doSearch()" data-i18n="searchButton">Find someone</button>
@@ -566,7 +565,7 @@
             <div class="foot-grid">
                 <div>
                     <div class="foot-brand"><img src="/assets/logo.png" alt="Hello Farashdanga"><span data-i18n="brand">Hello Farashdanga</span></div>
-                    <p id="footer-about" style="max-width:340px; font-size:.92rem; line-height:1.6;"></p>
+                    <p id="footer-about" style="max-width:340px; font-size:.92rem; line-height:1.6;">A free community directory connecting Farasdanga residents with local service professionals. No charges to browse, call or hire — ever.</p>
                 </div>
                 <div>
                     <h4 data-i18n="footPlatform">Platform</h4>
@@ -674,7 +673,6 @@
                 <button class="tab-btn" onclick="switchAdminTab('categories')"><span class="tab-icon">🗂️</span> Categories</button>
                 <button class="tab-btn" onclick="switchAdminTab('ads')"><span class="tab-icon">📢</span> Ads</button>
                 <button class="tab-btn" onclick="switchAdminTab('adplans')"><span class="tab-icon">💳</span> Ad Plans &amp; Pricing</button>
-                <button class="tab-btn" onclick="switchAdminTab('content')"><span class="tab-icon">✏️</span> Site Content</button>
             </nav>
             <div class="admin-sidebar-foot">
                 <div class="admin-whoami"><span class="admin-avatar">A</span> Signed in as Admin</div>
@@ -702,7 +700,6 @@
     const API = '/api';
     let CATEGORIES = [];
     let activeFilter = null;
-    let SETTINGS = {};
 
     async function api(path, opts = {}) {
         const res = await fetch(API + path, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -742,16 +739,9 @@
         requestAnimationFrame(tick);
     }
 
-    let SETTINGS_LOADED = {};
-    async function loadSettings() {
-        const { settings } = await api('/settings');
-        SETTINGS = settings;
-        const h1 = document.querySelector('.hero h1');
-        h1.innerHTML = (settings.hero_title1 || '') + ' <em>' + (settings.hero_title2 || '') + '</em>';
-        document.querySelector('.hero p.lead').textContent = settings.hero_subtitle || '';
-        document.getElementById('footer-about').textContent = settings.footer_about || '';
-        document.getElementById('ad-price-note').textContent = `Ad price: ₹${settings.ad_price_rupees || 499} for ${settings.ad_duration_days || 30} days, reviewed before going live.`;
-    }
+    const FOOTER_ABOUT = "A free community directory connecting Farasdanga residents with local service professionals. No charges to browse, call or hire — ever.";
+    const CONTACT_PHONE = "+91 98765 00000";
+    const CONTACT_EMAIL = "hello@farasdanga.example";
 
     async function loadCategories() {
         const { categories } = await api('/categories');
@@ -1138,8 +1128,8 @@
 
     function openInfo(type) {
         const content = {
-            about: ['About Hello Farashdanga', `<p>${SETTINGS.footer_about || ''}</p><p>Anyone can browse and call a listed provider for free. Local businesses can pay a small fee to promote themselves — that's the only paid feature on this site.</p>`],
-            contact: ['Contact us', `<p>📞 ${SETTINGS.contact_phone || ''}<br>✉️ ${SETTINGS.contact_email || ''}</p>`],
+            about: ['About Hello Farashdanga', `<p>${FOOTER_ABOUT}</p><p>Anyone can browse and call a listed provider for free. Local businesses can pay a small fee to promote themselves — that's the only paid feature on this site.</p>`],
+            contact: ['Contact us', `<p>📞 ${CONTACT_PHONE}<br>✉️ ${CONTACT_EMAIL}</p>`],
             terms: ['Terms', `<p>This directory is a free community service. Provider listings are submitted by the community and reviewed before publishing. Hello Farashdanga is not responsible for the quality of work performed by listed providers — please use your own judgement when hiring.</p>`]
         };
         const [title, body] = content[type] || ['Info', '<p>No content available.</p>'];
@@ -1174,9 +1164,9 @@
 
     async function switchAdminTab(tab) {
         document.querySelectorAll('#admin-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-        const idx = ['dashboard','providers','categories','ads','adplans','content'].indexOf(tab);
+        const idx = ['dashboard','providers','categories','ads','adplans'].indexOf(tab);
         document.querySelectorAll('#admin-tabs .tab-btn')[idx].classList.add('active');
-        const titles = { dashboard: 'Dashboard', providers: 'Providers', categories: 'Categories', ads: 'Ads', adplans: 'Ad Plans & Pricing', content: 'Site Content' };
+        const titles = { dashboard: 'Dashboard', providers: 'Providers', categories: 'Categories', ads: 'Ads', adplans: 'Ad Plans & Pricing' };
         document.getElementById('admin-page-title').textContent = titles[tab] || 'Admin';
         document.querySelector('.admin-sidebar').classList.remove('open');
         const c = document.getElementById('admin-content');
@@ -1194,7 +1184,6 @@
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <button class="btn btn-primary" style="padding:10px 18px; font-size:.87rem;" onclick="switchAdminTab('providers')">Review provider suggestions</button>
                     <button class="btn btn-outline" style="padding:10px 18px; font-size:.87rem;" onclick="switchAdminTab('ads')">Review pending ads</button>
-                    <button class="btn btn-outline" style="padding:10px 18px; font-size:.87rem;" onclick="switchAdminTab('content')">Edit homepage content</button>
                 </div>
             </div>`;
         } else if (tab === 'providers') {
@@ -1209,9 +1198,6 @@
         } else if (tab === 'adplans') {
             const { plans } = await api('/admin/ad-plans');
             c.innerHTML = renderAdminAdPlans(plans);
-        } else if (tab === 'content') {
-            const { settings } = await api('/settings');
-            c.innerHTML = renderAdminContent(settings);
         }
     }
     function statCard(icon, label, val, color) {
@@ -1503,38 +1489,6 @@
         toast('Plan deleted.', 'info');
     }
 
-    function renderAdminContent(settings) {
-        return `
-            <h3 style="font-family:'Fraunces',serif; margin:0 0 16px; color:var(--navy);">Edit site content &amp; ad pricing</h3>
-            <div class="admin-panel-card" style="max-width:560px; display:flex; flex-direction:column; gap:14px;">
-                <div class="field"><label>Hero title (line 1)</label><input id="cc-title1" value="${settings.hero_title1||''}"></div>
-                <div class="field"><label>Hero title (line 2, emphasized)</label><input id="cc-title2" value="${settings.hero_title2||''}"></div>
-                <div class="field"><label>Hero subtitle</label><textarea id="cc-subtitle" rows="2">${settings.hero_subtitle||''}</textarea></div>
-                <div class="field"><label>Footer about text</label><textarea id="cc-about" rows="2">${settings.footer_about||''}</textarea></div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                    <div class="field"><label>Ad price (₹)</label><input id="cc-ad-price" type="number" value="${settings.ad_price_rupees||499}"></div>
-                    <div class="field"><label>Ad duration (days)</label><input id="cc-ad-duration" type="number" value="${settings.ad_duration_days||30}"></div>
-                </div>
-                <div class="field"><label>Contact phone</label><input id="cc-contact-phone" value="${settings.contact_phone||''}"></div>
-                <div class="field"><label>Contact email</label><input id="cc-contact-email" value="${settings.contact_email||''}"></div>
-                <button class="btn btn-primary" style="align-self:flex-start; padding:11px 22px;" onclick="saveContent()">Save changes</button>
-            </div>`;
-    }
-    async function saveContent() {
-        await api('/admin/settings', { method: 'POST', body: JSON.stringify({
-            hero_title1: document.getElementById('cc-title1').value,
-            hero_title2: document.getElementById('cc-title2').value,
-            hero_subtitle: document.getElementById('cc-subtitle').value,
-            footer_about: document.getElementById('cc-about').value,
-            ad_price_rupees: document.getElementById('cc-ad-price').value,
-            ad_duration_days: document.getElementById('cc-ad-duration').value,
-            contact_phone: document.getElementById('cc-contact-phone').value,
-            contact_email: document.getElementById('cc-contact-email').value
-        })});
-        loadSettings();
-        toast('Site content updated.');
-    }
-
     /* ---------- language toggle (English / Bengali) ----------
        This translates the site's own interface text (menus, headings, labels,
        buttons). It does NOT translate content typed by people — provider bios,
@@ -1651,10 +1605,15 @@
 
     window.onload = async () => {
         applyLanguage(getLang());
-        await loadSettings();
-        await loadCategories();
-        await loadProviders();
-        await loadAds();
+        // Each section loads independently — if one endpoint fails, it no
+        // longer blocks the others from rendering (this is what caused the
+        // whole homepage to stay blank when a single unrelated error hit).
+        const safe = (fn, label) => fn().catch(err => console.error(`Failed to load ${label}:`, err));
+        await Promise.all([
+            safe(loadCategories, 'categories'),
+            safe(loadProviders, 'providers'),
+            safe(loadAds, 'ads')
+        ]);
     };
     window.addEventListener('scroll', () => {
         document.querySelector('nav.top').classList.toggle('scrolled', window.scrollY > 8);
