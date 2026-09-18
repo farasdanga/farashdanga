@@ -30,6 +30,7 @@ async function router(request, env, url) {
 
   // ---- Public: free provider suggestion (no login, no payment) ----
   if (pathname === '/api/providers/suggest' && method === 'POST') return suggestProvider(request, env);
+  if (pathname.match(/^\/api\/providers\/\d+\/contact$/) && method === 'POST') return recordProviderContact(env, idFromPath(pathname));
 
   // ---- Public: paid ad flow ----
   if (pathname === '/api/ads/create-order' && method === 'POST') return createAdOrder(request, env);
@@ -202,6 +203,10 @@ async function suggestProvider(request, env) {
 
   return json({ ok: true, message: 'Thanks! Submitted for review.' });
 }
+async function recordProviderContact(env, id) {
+  await env.DB.prepare('UPDATE providers SET contact_clicks = COALESCE(contact_clicks, 0) + 1 WHERE id = ?').bind(id).run();
+  return json({ ok: true });
+}
 
 /* ============================== PUBLIC: PAID BUSINESS ADS ============================== */
 // The client already compresses images to ~1000px JPEG @0.72 quality before
@@ -294,9 +299,12 @@ async function adminDashboard(request, env) {
   const liveAds = await env.DB.prepare('SELECT COUNT(*) as n FROM ads WHERE status = \'approved\' AND (expires_at IS NULL OR expires_at > ?)').bind(Date.now()).first();
   const pendingAds = await env.DB.prepare("SELECT COUNT(*) as n FROM ads WHERE status = 'pending_review'").first();
   const revenue = await env.DB.prepare("SELECT COALESCE(SUM(amount),0) as total FROM ads WHERE status IN ('pending_review','approved','expired')").first();
+  const engagement = await env.DB.prepare("SELECT COALESCE(SUM(impressions),0) as imp, COALESCE(SUM(clicks),0) as clk FROM ads").first();
+  const providerContacts = await env.DB.prepare("SELECT COALESCE(SUM(contact_clicks),0) as n FROM providers").first();
   return json({
     totalProviders: providers.n, pendingProviders: pendingProviders.n,
-    liveAds: liveAds.n, pendingAds: pendingAds.n, adRevenue: revenue.total
+    liveAds: liveAds.n, pendingAds: pendingAds.n, adRevenue: revenue.total,
+    adImpressions: engagement.imp, adClicks: engagement.clk, providerContacts: providerContacts.n
   });
 }
 
