@@ -820,8 +820,8 @@
                     <div class="phone-row"><span class="num">${p.phone}</span><span class="tag">FREE · NO CHARGES</span></div>
                 </div>
                 <div class="provider-actions ${p.whatsapp ? 'two' : ''}">
-                    <a href="${telHref(p.phone)}" class="call-btn">📞 Call now</a>
-                    ${p.whatsapp ? `<a href="${waHref(p.whatsapp)}" target="_blank" class="wa-btn">WhatsApp</a>` : ''}
+                    <a href="${telHref(p.phone)}" class="call-btn" onclick="trackProviderContact(${p.id})">📞 Call now</a>
+                    ${p.whatsapp ? `<a href="${waHref(p.whatsapp)}" target="_blank" class="wa-btn" onclick="trackProviderContact(${p.id})">WhatsApp</a>` : ''}
                 </div>
             </div>`).join('');
         if (list.length > shown.length) {
@@ -856,6 +856,19 @@
     const impressionsTracked = new Set();
     function trackAdEvent(id, kind) {
         try { fetch(`${API}/ads/${id}/${kind}`, { method: 'POST', keepalive: true }).catch(() => {}); } catch (e) {}
+    }
+    function trackProviderContact(id) {
+        try { fetch(`${API}/providers/${id}/contact`, { method: 'POST', keepalive: true }).catch(() => {}); } catch (e) {}
+    }
+    function downloadCSV(filename, headers, rows) {
+        const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\r\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     }
     function trackImpressionOnce(id) {
         if (impressionsTracked.has(id)) return;
@@ -972,29 +985,46 @@
         }
     }
 
-    // Popup ad: frequency is admin-configurable from Admin → Ads (default 24
-    // hours between popups for the same visitor; 0 means "once per browser
-    // session" instead). Chosen at random if several popup ads are live.
-    let POPUP_FREQUENCY_HOURS = 24;
+    // Popup ad: frequency is admin-configurable from Admin → Ads (in minutes;
+    // 0 means "once per browser session" instead).
+    //
+    // How selection works when several popup ads are live at once: nothing is
+    // ever stacked — a visitor only ever sees ONE popup per cooldown window.
+    // Which one is picked uses weighted rotation, not pure chance:
+    //   - Featured ads are twice as likely to be picked as regular ones.
+    //   - The ad shown last time is excluded from this round's draw (as long
+    //     as at least one other candidate exists), so the same visitor won't
+    //     see the same ad twice in a row — over several visits, all of your
+    //     popup ads get a fair turn instead of luck deciding it.
+    let POPUP_FREQUENCY_MINUTES = 60;
     async function loadPopupFrequency() {
         try {
             const { settings } = await api('/settings');
-            if (settings.popup_frequency_hours !== undefined) POPUP_FREQUENCY_HOURS = Number(settings.popup_frequency_hours);
-        } catch (e) { /* keep default of 24h if this fails — never blocks the rest of the page */ }
+            if (settings.popup_frequency_minutes !== undefined) POPUP_FREQUENCY_MINUTES = Number(settings.popup_frequency_minutes);
+        } catch (e) { /* keep default of 60 min if this fails — never blocks the rest of the page */ }
     }
     function popupDueToShow() {
-        if (POPUP_FREQUENCY_HOURS <= 0) return !sessionStorage.getItem('farasdanga_popup_shown');
+        if (POPUP_FREQUENCY_MINUTES <= 0) return !sessionStorage.getItem('farasdanga_popup_shown');
         const last = Number(localStorage.getItem('farasdanga_popup_last_shown') || 0);
-        return (Date.now() - last) / 3600000 >= POPUP_FREQUENCY_HOURS;
+        return (Date.now() - last) / 60000 >= POPUP_FREQUENCY_MINUTES;
     }
-    function markPopupShown() {
+    function markPopupShown(adId) {
         sessionStorage.setItem('farasdanga_popup_shown', '1');
         localStorage.setItem('farasdanga_popup_last_shown', String(Date.now()));
+        localStorage.setItem('farasdanga_last_popup_id', String(adId));
+    }
+    function pickPopupAd(ads) {
+        const lastId = Number(localStorage.getItem('farasdanga_last_popup_id') || 0);
+        let candidates = ads.filter(a => a.id !== lastId);
+        if (!candidates.length) candidates = ads; // only one ad exists at all — has to repeat
+        const weighted = [];
+        candidates.forEach(a => { weighted.push(a); if (a.featured) weighted.push(a); }); // featured = 2x weight
+        return weighted[Math.floor(Math.random() * weighted.length)];
     }
     function maybeShowPopupAd(ads) {
         if (!ads.length) return;
         if (!popupDueToShow()) return;
-        const a = ads[Math.floor(Math.random() * ads.length)];
+        const a = pickPopupAd(ads);
         setTimeout(() => {
             const waNumber = a.whatsapp || a.phone;
             const primaryHref = a.website_url ? a.website_url : (waNumber ? waHref(waNumber) : telHref(a.phone));
@@ -1016,7 +1046,7 @@
                 </div>`;
             document.getElementById('popup-ad-overlay').classList.add('active');
             trackAdEvent(a.id, 'impression');
-            markPopupShown();
+            markPopupShown(a.id);
         }, 3000);
     }
     function closePopupAd() {
@@ -1210,12 +1240,20 @@
         const c = document.getElementById('admin-content');
         if (tab === 'dashboard') {
             const d = await api('/admin/dashboard');
+            const ctr = d.adImpressions ? (((d.adClicks||0)/d.adImpressions)*100).toFixed(1) + '%' : '—';
             c.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px;">
                 ${statCard('👥', 'Live providers', d.totalProviders)}
                 ${statCard('⏳', 'Pending suggestions', d.pendingProviders, d.pendingProviders?'#A6690C':'')}
                 ${statCard('📢', 'Live ads', d.liveAds)}
                 ${statCard('🕐', 'Pending ads', d.pendingAds, d.pendingAds?'#A6690C':'')}
                 ${statCard('💰', 'Total ad revenue', '₹'+(d.adRevenue/100).toFixed(0), 'var(--river)')}
+            </div>
+            <div class="admin-section-head" style="margin-top:28px;"><h3>Engagement</h3></div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px;">
+                ${statCard('👁', 'Total ad views', d.adImpressions || 0)}
+                ${statCard('👆', 'Total ad clicks', d.adClicks || 0)}
+                ${statCard('📊', 'Average CTR', ctr)}
+                ${statCard('☎️', 'Provider calls/WhatsApp', d.providerContacts || 0)}
             </div>
             <div class="admin-panel-card" style="margin-top:24px;">
                 <div class="admin-section-head"><h3>Quick actions</h3></div>
@@ -1244,32 +1282,50 @@
     }
 
     function renderAdminProviders(providers) {
+        window._providersCache = providers;
+        return `
+            <div class="admin-section-head">
+                <h3>Providers &amp; suggestions</h3>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-outline" style="padding:9px 16px; font-size:.85rem;" onclick="exportProvidersCSV()">⬇ Export CSV</button>
+                    <button class="btn btn-primary" style="padding:9px 18px; font-size:.87rem;" onclick="openProviderForm()">+ Add provider</button>
+                </div>
+            </div>
+            <input id="provider-search" type="text" placeholder="Search by name, phone, service or status…" oninput="filterProviderTable()" style="width:100%; max-width:400px; padding:10px 14px; border:1px solid var(--line); border-radius:10px; margin-bottom:16px;">
+            <div id="provider-form-area"></div>
+            <div class="admin-panel-card" style="overflow-x:auto;">
+                <table class="admin-table">
+                    <thead><tr><th>Name</th><th>Service</th><th>Phone</th><th>Contacts</th><th>Status</th><th></th></tr></thead>
+                    <tbody id="provider-rows-tbody">${providerRowsHtml(providers)}</tbody>
+                </table>
+            </div>`;
+    }
+    function providerRowsHtml(providers) {
         const badge = { approved: 'pill-green', pending: 'pill-amber', rejected: 'pill-red' };
-        const rows = providers.map(p => `
+        return providers.map(p => `
             <tr>
                 <td>${p.icon} ${p.name}</td>
                 <td>${p.service}</td>
                 <td style="font-family:monospace; font-size:.85em;">${p.phone}</td>
+                <td>📞 ${p.contact_clicks || 0}</td>
                 <td><span class="pill ${badge[p.status]||'pill-grey'}">${p.status}</span></td>
                 <td style="text-align:right; white-space:nowrap;">
                     ${p.status === 'pending' ? `<button class="link-btn green" onclick="approveProvider(${p.id})">Approve</button> <button class="link-btn red" onclick="rejectProvider(${p.id})">Reject</button> ` : ''}
                     <button class="link-btn blue" onclick="editProvider(${p.id})">Edit</button>
                     <button class="link-btn red" onclick="deleteProvider(${p.id})">Delete</button>
                 </td>
-            </tr>`).join('');
-        window._providersCache = providers;
-        return `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h3 style="font-family:'Fraunces',serif; margin:0; color:var(--navy);">Providers &amp; suggestions</h3>
-                <button class="btn btn-primary" style="padding:9px 18px; font-size:.87rem;" onclick="openProviderForm()">+ Add provider</button>
-            </div>
-            <div id="provider-form-area"></div>
-            <div class="admin-panel-card" style="overflow-x:auto;">
-                <table class="admin-table">
-                    <thead><tr><th>Name</th><th>Service</th><th>Phone</th><th>Status</th><th></th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="5" style="text-align:center; color:var(--ink-soft); padding:24px 0;">No providers yet.</td></tr>'}</tbody>
-                </table>
-            </div>`;
+            </tr>`).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--ink-soft); padding:24px 0;">No providers yet.</td></tr>';
+    }
+    function filterProviderTable() {
+        const term = (document.getElementById('provider-search').value || '').toLowerCase().trim();
+        const list = !term ? window._providersCache : window._providersCache.filter(p =>
+            p.name.toLowerCase().includes(term) || p.phone.includes(term) ||
+            p.service.toLowerCase().includes(term) || p.status.toLowerCase().includes(term));
+        document.getElementById('provider-rows-tbody').innerHTML = providerRowsHtml(list);
+    }
+    function exportProvidersCSV() {
+        downloadCSV('providers.csv', ['Name','Service','Phone','WhatsApp','Status','Contact Clicks','Bio'],
+            window._providersCache.map(p => [p.name, p.service, p.phone, p.whatsapp || '', p.status, p.contact_clicks || 0, p.bio || '']));
     }
     function openProviderForm(id) {
         const p = id ? window._providersCache.find(x => x.id === id) : null;
@@ -1334,21 +1390,19 @@
     }
     async function deleteCategory(id) { if (!confirm('Delete this category?')) return; await api(`/admin/categories/${id}`, { method: 'DELETE' }); switchAdminTab('categories'); loadCategories(); toast('Deleted.', 'info'); }
 
-    function renderAdminAds(ads) {
-        window._adsCache = ads;
+    function adRowHtml(a) {
         const badge = { pending_payment: 'pill-grey', pending_review: 'pill-amber', approved: 'pill-green', rejected: 'pill-red', expired: 'pill-grey' };
         const refundBadge = { refunded: 'pill-green', failed: 'pill-red', pending: 'pill-amber' };
         const placementLabel = { directory: 'Directory listing', banner: 'Homepage banner', popup: 'Popup' };
-        const rows = ads.map(a => {
-            const impressions = a.impressions || 0;
-            const clicks = a.clicks || 0;
-            const ctr = impressions ? ((clicks / impressions) * 100).toFixed(1) + '%' : '—';
-            let expiryNote = '';
-            if (a.status === 'approved' && a.expires_at) {
-                const daysLeft = Math.ceil((a.expires_at - Date.now()) / 86400000);
-                expiryNote = daysLeft > 0 ? ` · expires in ${daysLeft}d` : ' · expired';
-            }
-            return `
+        const impressions = a.impressions || 0;
+        const clicks = a.clicks || 0;
+        const ctr = impressions ? ((clicks / impressions) * 100).toFixed(1) + '%' : '—';
+        let expiryNote = '';
+        if (a.status === 'approved' && a.expires_at) {
+            const daysLeft = Math.ceil((a.expires_at - Date.now()) / 86400000);
+            expiryNote = daysLeft > 0 ? ` · expires in ${daysLeft}d` : ' · expired';
+        }
+        return `
             <div class="admin-panel-card" style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; ${a.featured ? 'border-color:#D4A017;' : ''}">
                 <div style="display:flex; gap:12px; align-items:flex-start; cursor:pointer;" onclick="openAdDetail(${a.id})">
                     ${a.image_data ? `<img src="${a.image_data}" style="width:64px; height:64px; object-fit:cover; border-radius:10px; border:1px solid var(--line); flex-shrink:0;">` : ''}
@@ -1367,30 +1421,52 @@
                     <button class="link-btn red" onclick="deleteAd(${a.id})">Delete</button>
                 </div>
             </div>`;
-        }).join('');
+    }
+    function filterAdTable() {
+        const term = (document.getElementById('ad-search').value || '').toLowerCase().trim();
+        const list = !term ? window._adsCache : window._adsCache.filter(a =>
+            a.business_name.toLowerCase().includes(term) || a.phone.includes(term) ||
+            a.status.toLowerCase().includes(term) || (a.placement || '').toLowerCase().includes(term));
+        document.getElementById('ad-rows-container').innerHTML = list.map(a => adRowHtml(a)).join('') || '<p style="color:var(--ink-soft);">No ads match that search.</p>';
+    }
+    function exportAdsCSV() {
+        downloadCSV('ads.csv', ['Business','Placement','Plan','Amount (₹)','Status','Featured','Impressions','Clicks','CTR','Submitted'],
+            window._adsCache.map(a => [
+                a.business_name, a.placement || 'directory', a.plan_name || '', (a.amount/100).toFixed(0), a.status,
+                a.featured ? 'Yes' : 'No', a.impressions || 0, a.clicks || 0,
+                a.impressions ? (((a.clicks||0)/a.impressions)*100).toFixed(1) + '%' : '0%',
+                new Date(a.created_at).toLocaleDateString()
+            ]));
+    }
+    function renderAdminAds(ads) {
+        window._adsCache = ads;
         return `
-            <div class="admin-section-head"><h3>Business ads</h3></div>
-            <div class="admin-panel-card" style="margin-bottom:20px; max-width:480px;">
+            <div class="admin-section-head">
+                <h3>Business ads</h3>
+                <button class="btn btn-outline" style="padding:9px 16px; font-size:.85rem;" onclick="exportAdsCSV()">⬇ Export CSV</button>
+            </div>
+            <div class="admin-panel-card" style="margin-bottom:20px; max-width:520px;">
                 <p style="font-weight:700; color:var(--navy); margin:0 0 4px;">Popup frequency</p>
-                <p style="font-size:.82rem; color:var(--ink-soft); margin:0 0 12px;">How often the same visitor can be shown a popup ad again.</p>
+                <p style="font-size:.82rem; color:var(--ink-soft); margin:0 0 12px;">How often the same visitor can be shown a popup ad again. If more than one popup ad is live, only one is ever shown at a time — featured ads are shown about twice as often as regular ones, and the ad shown last time is skipped so the same visitor doesn't see it twice in a row.</p>
                 <div style="display:flex; gap:10px; align-items:center;">
-                    <input id="popup-frequency-input" type="number" min="0" placeholder="24" style="width:90px; padding:9px 10px; border:1px solid var(--line); border-radius:10px;">
-                    <span style="font-size:.85rem; color:var(--ink-soft);">hours (0 = once per browser session)</span>
+                    <input id="popup-frequency-input" type="number" min="0" placeholder="60" style="width:90px; padding:9px 10px; border:1px solid var(--line); border-radius:10px;">
+                    <span style="font-size:.85rem; color:var(--ink-soft);">minutes (0 = once per browser session)</span>
                 </div>
                 <button class="btn btn-primary" style="margin-top:12px; padding:9px 18px; font-size:.85rem;" onclick="savePopupFrequencySetting()">Save</button>
             </div>
+            <input id="ad-search" type="text" placeholder="Search by business name, phone, status or placement…" oninput="filterAdTable()" style="width:100%; max-width:400px; padding:10px 14px; border:1px solid var(--line); border-radius:10px; margin-bottom:16px;">
             <div id="ad-detail-area"></div>
-            ${rows || '<p style="color:var(--ink-soft);">No ads yet.</p>'}`;
+            <div id="ad-rows-container">${ads.map(a => adRowHtml(a)).join('') || '<p style="color:var(--ink-soft);">No ads yet.</p>'}</div>`;
     }
     async function loadPopupFrequencyIntoAdmin() {
         try {
             const { settings } = await api('/settings');
-            document.getElementById('popup-frequency-input').value = settings.popup_frequency_hours ?? 24;
+            document.getElementById('popup-frequency-input').value = settings.popup_frequency_minutes ?? 60;
         } catch (e) {}
     }
     async function savePopupFrequencySetting() {
         const val = document.getElementById('popup-frequency-input').value;
-        await api('/admin/settings', { method: 'POST', body: JSON.stringify({ popup_frequency_hours: val }) });
+        await api('/admin/settings', { method: 'POST', body: JSON.stringify({ popup_frequency_minutes: val }) });
         toast('Popup frequency updated.');
     }
     async function approveAd(id) { await api(`/admin/ads/${id}/approve`, { method: 'POST' }); switchAdminTab('ads'); loadAds(); toast('Ad approved — now live.'); }
